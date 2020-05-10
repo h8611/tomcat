@@ -17,6 +17,12 @@
 
 package org.apache.tomcat.util.net;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
+import org.apache.tomcat.util.security.PrivilegedSetTccl;
+
 import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
@@ -27,12 +33,6 @@ import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.RejectedExecutionException;
-
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.ExceptionUtils;
-import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
-import org.apache.tomcat.util.security.PrivilegedSetTccl;
 
 
 /**
@@ -187,6 +187,9 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
      * The background thread that listens for incoming TCP/IP connections and
      * hands them off to an appropriate processor.
      */
+    /**
+     * 连接接收类，用于接受来自客户端的所有请求
+     */
     protected class Acceptor extends AbstractEndpoint.Acceptor {
 
         @Override
@@ -198,6 +201,7 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
             while (running) {
 
                 // Loop if endpoint is paused
+                // 内层循环，暂时中断处理
                 while (paused && running) {
                     state = AcceptorState.PAUSED;
                     try {
@@ -207,6 +211,7 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
                     }
                 }
 
+                //关闭
                 if (!running) {
                     break;
                 }
@@ -214,12 +219,14 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
 
                 try {
                     //if we have reached max connections, wait
+                    // 继承AQS，控制总连接数不能超过最大值
                     countUpOrAwaitConnection();
 
                     Socket socket = null;
                     try {
                         // Accept the next incoming connection from the server
                         // socket
+                        // 接收socket请求，最重要的入口！！！
                         socket = serverSocketFactory.acceptSocket(serverSocket);
                     } catch (IOException ioe) {
                         countDownConnection();
