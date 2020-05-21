@@ -309,6 +309,7 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
 
                     try {
                         // SSL handshake
+                        // 这里处理HTTPS相关的逻辑
                         serverSocketFactory.handshake(socket.getSocket());
                     } catch (Throwable t) {
                         ExceptionUtils.handleThrowable(t);
@@ -319,6 +320,9 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
                         state = SocketState.CLOSED;
                     }
 
+                    /**
+                     * handler处理socket
+                     */
                     if ((state != SocketState.CLOSED)) {
                         if (status == null) {
                             state = handler.process(socket, SocketStatus.OPEN_READ);
@@ -538,6 +542,7 @@ public class JIoEndpoint extends AbstractEndpoint<Socket> {
             if (!running) {
                 return false;
             }
+            // 将包装好的socketProcessor扔线程池
             getExecutor().execute(new SocketProcessor(wrapper));
         } catch (RejectedExecutionException x) {
             log.warn("Socket processing request was rejected for:"+socket,x);

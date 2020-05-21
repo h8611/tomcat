@@ -16,11 +16,6 @@
  */
 package org.apache.coyote.http11;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.Socket;
-
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
 import org.apache.juli.logging.Log;
@@ -31,6 +26,11 @@ import org.apache.tomcat.util.http.HeaderUtil;
 import org.apache.tomcat.util.http.parser.HttpParser;
 import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SocketWrapper;
+
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Socket;
 
 /**
  * Implementation of InputBuffer which provides HTTP request header parsing as
@@ -69,6 +69,7 @@ public class InternalInputBuffer extends AbstractInputBuffer<Socket> {
         activeFilters = new InputFilter[0];
         lastActiveFilter = -1;
 
+        // 是否读取请求头的标志，这里为true，首次一定要读取请求头，后面每次请求过程中，会设置为false，处理完成又会设置true，以便下次请求使用
         parsingHeader = true;
         swallowInput = true;
 
@@ -558,13 +559,25 @@ public class InternalInputBuffer extends AbstractInputBuffer<Socket> {
 
         int nRead = 0;
 
+        /**
+         * 这个核心就是读取socket中数据到缓冲区buf中，循环读取，2种情况
+         * 1、请求行和请求头：不能超过缓冲区大小(默认8kb)，如果超过，则抛异常，读完后将parsingHeader设置为false
+         * 2、请求行：没有任何大小限制，循环读取，如果剩下的少于4500个字节，则会重新创建buf数组，从头开始读取，直到读完位置，注意！buf原先引用的数组们，等待GC
+         */
         if (parsingHeader) {
 
+            /**
+             * 从socket中读取数据大于tomcat中缓冲区buf的长度，直接抛异常,这里有两点
+             * 1、这个就是我们很多时候很多人说的，get请求url不能过长的原因，其实是header和url等总大小不能超过8kb
+             * 2、这里的buf非常总要，它是InternalInputBuffer的属性，是一个字节数据，用户暂存从socket中读取的数据，比如：请求行，请求头、请求体
+             */
             if (lastValid == buf.length) {
                 throw new IllegalArgumentException
                     (sm.getString("iib.requestheadertoolarge.error"));
             }
 
+            // 将socket中的数据读到缓冲区buf中，注意！这里就是BIO之所以难懂的关键所在，它会阻塞！
+            // 这个方法会阻塞，如果没有数据可读，则会一直阻塞，有数据，则移动lastValid位置
             nRead = inputStream.read(buf, pos, buf.length - lastValid);
             if (nRead > 0) {
                 lastValid = pos + nRead;
@@ -587,7 +600,7 @@ public class InternalInputBuffer extends AbstractInputBuffer<Socket> {
             }
 
         }
-
+        // 原则上这个方法要么阻塞着，要么就返回true
         return (nRead > 0);
 
     }

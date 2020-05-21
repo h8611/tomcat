@@ -16,8 +16,6 @@
  */
 package org.apache.coyote.http11;
 
-import java.io.IOException;
-
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
 import org.apache.tomcat.util.buf.ByteChunk;
@@ -27,6 +25,8 @@ import org.apache.tomcat.util.http.parser.HttpParser;
 import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SocketWrapper;
 import org.apache.tomcat.util.res.StringManager;
+
+import java.io.IOException;
 
 public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
@@ -60,7 +60,7 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
 
     /**
-     * Pointer to the current read buffer.
+     * Pointer to the current read buffer.默认8KB大小
      */
     protected byte[] buf;
 
@@ -267,6 +267,7 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
         // Reset pointers
         lastActiveFilter = -1;
+        // 将读取请求头标志位true，以便下次能够读取请求头
         parsingHeader = true;
         swallowInput = true;
     }

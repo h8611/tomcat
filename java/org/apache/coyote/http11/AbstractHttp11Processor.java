@@ -16,34 +16,8 @@
  */
 package org.apache.coyote.http11;
 
-import java.io.IOException;
-import java.io.InterruptedIOException;
-import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.StringTokenizer;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
-
-import javax.servlet.http.HttpServletResponse;
-
-import org.apache.coyote.AbstractProcessor;
-import org.apache.coyote.ActionCode;
-import org.apache.coyote.AsyncContextCallback;
-import org.apache.coyote.ErrorState;
-import org.apache.coyote.RequestInfo;
-import org.apache.coyote.http11.filters.BufferedInputFilter;
-import org.apache.coyote.http11.filters.ChunkedInputFilter;
-import org.apache.coyote.http11.filters.ChunkedOutputFilter;
-import org.apache.coyote.http11.filters.GzipOutputFilter;
-import org.apache.coyote.http11.filters.IdentityInputFilter;
-import org.apache.coyote.http11.filters.IdentityOutputFilter;
-import org.apache.coyote.http11.filters.SavedRequestInputFilter;
-import org.apache.coyote.http11.filters.VoidInputFilter;
-import org.apache.coyote.http11.filters.VoidOutputFilter;
+import org.apache.coyote.*;
+import org.apache.coyote.http11.filters.*;
 import org.apache.coyote.http11.upgrade.servlet31.HttpUpgradeHandler;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.Ascii;
@@ -61,6 +35,14 @@ import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SocketStatus;
 import org.apache.tomcat.util.net.SocketWrapper;
 import org.apache.tomcat.util.res.StringManager;
+
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.io.StringReader;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
@@ -1078,6 +1060,9 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
         // Setting up the I/O
         setSocketWrapper(socketWrapper);
+        /**
+         * 设置socket的InputStream和OutStream，供后面读取数据和响应使用
+         */
         getInputBuffer().init(socketWrapper, endpoint);
         getOutputBuffer().init(socketWrapper, endpoint);
 
@@ -1093,18 +1078,29 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             keptAlive = socketWrapper.isKeptAlive();
         }
 
+        /**
+         * 长连接相关，判断当前socket是否继续处理接下来的请求
+         */
         if (disableKeepAlive()) {
             socketWrapper.setKeepAliveLeft(0);
         }
 
+        /**
+         * 处理socket中的请求，在长连接的模式下，会一直执行当前循环
+         */
         while (!getErrorState().isError() && keepAlive && !comet && !isAsync() &&
                 upgradeInbound == null &&
                 httpUpgradeHandler == null && !endpoint.isPaused()) {
 
             // Parsing the request header
             try {
+                /**
+                 * 1、设置socket超时时间
+                 * 2、第一次从socket中读取数据
+                 */
                 setRequestLineReadTimeout();
 
+                // 读取HTTP请求行数据
                 if (!getInputBuffer().parseRequestLine(keptAlive)) {
                     if (handleIncompleteRequestLineRead()) {
                         break;
@@ -1123,7 +1119,9 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                 } else {
                     keptAlive = true;
                     // Set this every time in case limit has been changed via JMX
+                    // 设置请求行和请求头大小，注意，这个很重要！
                     request.getMimeHeaders().setLimit(endpoint.getMaxHeaderCount());
+                    // 设置做多可设置cookie数量
                     request.getCookies().setLimit(getMaxCookieCount());
                     // Currently only NIO will ever return false here
                     // Don't parse headers for HTTP/0.9
@@ -1198,6 +1196,12 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             if (!getErrorState().isError()) {
                 try {
                     rp.setStage(org.apache.coyote.Constants.STAGE_SERVICE);
+                    /**
+                     * 将封装好的请求和响应对象,交由容器处理
+                     * service-->host-->context-->wrapper-->servlet
+                     * 这里非常重要，我们所写的servlet代码正是这里在调用，它遵循了Servlet规范
+                     * 这里处理完，代表程序员开发的servlet已经执行完毕
+                     */
                     adapter.service(request, response);
                     // Handle when the response was committed before a serious
                     // error occurred.  Throwing a ServletException should both
@@ -1250,6 +1254,10 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                     // to be closed occurred.
                     checkExpectationAndResponseStatus();
                 }
+                /**
+                 * 当前请求收尾工作
+                 * 判断请求体是否读取完毕，没有则读取完毕，并修正pos
+                 */
                 endRequest();
             }
 
@@ -1264,6 +1272,9 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
             if (!isAsync() && !comet || getErrorState().isError()) {
                 if (getErrorState().isIoAllowed()) {
+                    /**
+                     * 根据修正完的pos和lastValid,初始化数组下标，以便继续处理下一次请求
+                     */
                     getInputBuffer().nextRequest();
                     getOutputBuffer().nextRequest();
                 }
