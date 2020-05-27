@@ -135,6 +135,14 @@ public class InternalInputBuffer extends AbstractInputBuffer<Socket> {
             // also be tolerant of multiple SP and/or HT.
             if (buf[pos] == Constants.SP || buf[pos] == Constants.HT) {
                 space = true;
+                /**
+                 * 设置调用方法，这里没有直接设置字符串，而是用了ByteChunk
+                 * ByteChunk中包含一个字节数据类型的属性buff，此处的setBytes方法就是将buff指向Tomcat的缓存buf。然后start和end标记为
+                 * 此处方法的后两个入参，也就是将请求方法在buf中标记了出来，但是没有转换成字符串，等到确实使用到的时候再使用ByteBuffer.wap方法
+                 * 转换成字符串，且标记hasStrValue=true，如果再次获取就直接拿转换好的字符串，不用再次转换。效率考虑？牛逼！
+                 * 因此，就算后面由于请求体过长，Tomcat重新开辟新的数组buf读取请求体。原buf也不会被GC，因为ByteChunk中的buff引用了原buf数组
+                 * 什么时候原数组才会被GC？本次请求结束，request对象被GC后。。。
+                 */
                 request.method().setBytes(buf, start, pos - start);
             } else if (!HttpParser.isToken(buf[pos])) {
                 String invalidMethodValue = parseInvalid(start, buf);
