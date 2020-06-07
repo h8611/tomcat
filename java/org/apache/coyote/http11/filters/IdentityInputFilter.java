@@ -17,14 +17,14 @@
 
 package org.apache.coyote.http11.filters;
 
-import java.io.IOException;
-import java.nio.charset.Charset;
-
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
 import org.apache.coyote.http11.InputFilter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.res.StringManager;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
 
 /**
  * Identity input filter.
@@ -139,6 +139,10 @@ public class IdentityInputFilter implements InputFilter {
                     // The chunk is longer than the number of bytes remaining
                     // in the body; changing the chunk length to the number
                     // of bytes remaining
+                    /**
+                     * nRead > remaining 表示本次读取的数据，已经超过了请求体剩余未读数据，也就是顺带把下一个请求的数据给读出来了
+                     * 这时将字节块chunk的end位置往前移动，使得刚好只标识本次请求的数据，且返回请求体剩余未读数据的长度
+                     */
                     chunk.setBytes(chunk.getBytes(), chunk.getStart(),
                                    (int) remaining);
                     result = (int) remaining;
@@ -146,11 +150,18 @@ public class IdentityInputFilter implements InputFilter {
                     result = nRead;
                 }
                 if (nRead > 0) {
+                    /**
+                     * 计算请求体剩余数据长度
+                     * 注意！remaining - nRead 有可能是负数，如果本次读取是请求体最后一次读取，且读取出了下一个请求的数据
+                     */
                     remaining = remaining - nRead;
                 }
             } else {
                 // No more bytes left to be read : return -1 and clear the
                 // buffer
+                /**
+                 * remaining <=0 请求体数据已经全部读完，返回-1
+                 */
                 chunk.recycle();
                 result = -1;
             }
@@ -181,6 +192,13 @@ public class IdentityInputFilter implements InputFilter {
         long swallowed = 0;
 
         // Consume extra bytes.
+        /**
+         * remaining 表示当前还没有读取完的请求体字节数量
+         * remaining > 0 表示还有数据，一直循环从操作系统读取，直到<=0
+         * nread 表示本次读取的字节数，
+         * remaining - nread 表示还剩余的字节数，如果>0，则继续读取，直到<=0，注意，有可能<0
+         * remaining < 0 表示读取的请求体数量过多，读出了下个请求的数据，pos位置需要修正，往前移动-remaining个位置
+         */
         while (remaining > 0) {
 
             int nread = buffer.doRead(endChunk, null);

@@ -253,10 +253,16 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
         request.recycle();
 
         // Copy leftover bytes to the beginning of the buffer
+        /**
+         * lastValid-pos > 0 表示pos经过修正，pos->lastValid的数据为下次请求的数据，需要拷贝到buf数组的头部，以便读取下次请求
+         */
         if (lastValid - pos > 0 && pos > 0) {
             System.arraycopy(buf, pos, buf, 0, lastValid - pos);
         }
         // Always reset pos to zero
+        /**
+         * 重置pos和lastValid
+         */
         lastValid = lastValid - pos;
         pos = 0;
 
@@ -267,7 +273,9 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
         // Reset pointers
         lastActiveFilter = -1;
-        // 将读取请求头标志位true，以便下次能够读取请求头
+        /**
+         * 将parsingHeader标志位true，以便继续读取下次请求的请求行和请求头
+          */
         parsingHeader = true;
         swallowInput = true;
     }
@@ -282,6 +290,9 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
         if (swallowInput && (lastActiveFilter != -1)) {
             int extraBytes = (int) activeFilters[lastActiveFilter].end();
+            /**
+             * 修正pos，前移extraBytes个位置
+             */
             pos = pos - extraBytes;
         }
     }

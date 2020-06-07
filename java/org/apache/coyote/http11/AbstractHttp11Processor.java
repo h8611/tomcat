@@ -1100,7 +1100,9 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                  */
                 setRequestLineReadTimeout();
 
-                // 读取HTTP请求行数据
+                /**
+                 * 读取请求行
+                 */
                 if (!getInputBuffer().parseRequestLine(keptAlive)) {
                     if (handleIncompleteRequestLineRead()) {
                         break;
@@ -1119,12 +1121,15 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                 } else {
                     keptAlive = true;
                     // Set this every time in case limit has been changed via JMX
-                    // 设置请求行和请求头大小，注意，这个很重要！
+                    // 设置请求头数量
                     request.getMimeHeaders().setLimit(endpoint.getMaxHeaderCount());
                     // 设置做多可设置cookie数量
                     request.getCookies().setLimit(getMaxCookieCount());
                     // Currently only NIO will ever return false here
                     // Don't parse headers for HTTP/0.9
+                    /**
+                     * 读取请求头
+                     */
                     if (!http09 && !getInputBuffer().parseHeaders()) {
                         // We've read part of the request, don't recycle it
                         // instead associate it with the socket
@@ -1255,8 +1260,13 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                     checkExpectationAndResponseStatus();
                 }
                 /**
-                 * 当前请求收尾工作
+                 * 请求收尾工作
                  * 判断请求体是否读取完毕，没有则读取完毕，并修正pos
+                 * 请求体读取分为两种：
+                 * 1、程序员读取：在servlet中有程序员主动读取，这种方式读取数据不一定读取完整数据，取决于业务需求
+                 * 2、Tomcat自己读取：如果servlet中没有读取，或者没有读取完全，则Tomcat负责读取剩余的请求体
+                 * 1和2的差别在于，2中仅仅把数据从操作系统读取到buf中，尽管也用了字节块做标记，但是不会做其他的事情，而1中还会把字节块标记的数据拷贝到目标数组中
+                 * 这个方法就是处理情况2中的请求体读取逻辑
                  */
                 endRequest();
             }
@@ -1274,6 +1284,10 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                 if (getErrorState().isIoAllowed()) {
                     /**
                      * 根据修正完的pos和lastValid,初始化数组下标，以便继续处理下一次请求
+                     * 两种情况
+                     * 1、读取请求体刚好读取完，将pos=lastValid=0，即都指向buf数组第一个位置，重新读取数据
+                     * 2、读取请求体多读出了下次请求的数据，这个时候需要将下个请求的数据移动到buf数组头，以便处理下个请求
+                     * 注意，buf数组中的数据没有删除，是直接覆盖，从而达到对buf数组的重复使用
                      */
                     getInputBuffer().nextRequest();
                     getOutputBuffer().nextRequest();

@@ -16,12 +16,12 @@
  */
 package org.apache.tomcat.util.http;
 
+import org.apache.tomcat.util.buf.MessageBytes;
+import org.apache.tomcat.util.res.StringManager;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Enumeration;
-
-import org.apache.tomcat.util.buf.MessageBytes;
-import org.apache.tomcat.util.res.StringManager;
 
 /**
  * This class is used to contain standard internet message headers,
@@ -245,6 +245,9 @@ public class MimeHeaders {
      * field has not had its name or value initialized.
      */
     private MimeHeaderField createHeader() {
+        /**
+         * limit：请求头数量最大值，默认100.
+         */
         if (limit > -1 && count >= limit) {
             throw new IllegalStateException(sm.getString(
                     "headers.maxCountFail", Integer.valueOf(limit)));

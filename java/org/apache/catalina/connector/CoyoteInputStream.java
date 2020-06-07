@@ -16,14 +16,13 @@
  */
 package org.apache.catalina.connector;
 
+import org.apache.catalina.security.SecurityUtil;
+
+import javax.servlet.ServletInputStream;
 import java.io.IOException;
 import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
-
-import javax.servlet.ServletInputStream;
-
-import org.apache.catalina.security.SecurityUtil;
 
 /**
  * This class handles reading bytes.
@@ -137,6 +136,14 @@ public class CoyoteInputStream
         }
     }
 
+    /**
+     * servlet或者servlet后业务代码(springmvc中的Controller)读请求体会调用该方法
+     * 入参是程序员传的字节数组，用于接收读取的请求体；一旦数据读取到该数组中，Tomcat缓冲区中该部分数据就会在下次读取请求体时被覆盖
+     *
+     * @param b
+     * @return
+     * @throws IOException
+     */
     @Override
     public int read(final byte[] b) throws IOException {
 
@@ -164,6 +171,10 @@ public class CoyoteInputStream
                 }
             }
         } else {
+            /**
+             * CoyoteInputStream中属性InputBuffer用于读取数据到入参字节数据中，从数组下标0开始，长度为数组长度
+             * InputBuffer中有字节块ByteChunk，标记Tomcat缓存buf中的请求体，然后拷贝到入参字节数据中
+             */
             return ib.read(b, 0, b.length);
          }
     }

@@ -411,16 +411,39 @@ public final class ByteChunk extends AbstractChunk {
 
     public int substract(byte dest[], int off, int len) throws IOException {
         if (checkEof()) {
+            /**
+             * 请求体都已经读完，返回-1，如果是程序员在servlet中循环读取请求体，则会退出循环
+             */
             return -1;
         }
+
+        /**
+         * 本地读取往目前数组写数据的长度，最长等于字节块标记的长度
+         */
         int n = len;
         if (len > getLength()) {
             n = getLength();
         }
+
+        /**
+         * 此时buff和buf指向相同的字节数组，也就是Tomcat缓冲区
+         * 从字节块中buff的指向数组start位置开始，拷贝数据到目标数组dest(程序员入参)中，dest数组从下标off开始，拷贝长度为n
+         * 至此，目标数组中应有了请求体数据。start移动长度n个位置，后面继续读取或者拷贝数据到目标数组
+         * 我们来想一个问题，目标数组长度和本次读取的请求体数据长度肯定不会刚好相等，有几种情况
+         * 1、目标数组长度>请求体数据长度
+         *    请求体数据会完全被拷贝到目标数组中，start刚好移动到字节块的end位置，下次读取会再次从操作系统读取数据
+         * 2、目标数组长度<请求体数据长度
+         *    请求体数据只会拷贝部分到目标数组中，start移动n个位置，且start<end，下次读取时checkEof()返回false，无需从操作系统读取数据，直接从字节块拷贝数据即可
+         *
+         * 所以，我们明白一个道理：平时我们在servlet中循环读取请求体的时候。如果自定义数组很小，可能并不是每次循环，程序都会从操作系统读取数据，而仅仅是从字节块中拷贝数据，
+         *                     然后通过后移start位置不断拷贝后续数据，直到start=end后，下次循环才会再次从操作系统读取数据
+         *                     当然，如果自定义数组足够大，也并不能保证一次读取完请求体数据，这取决于操作系统从socket中是否一次读完请求体以及buf中用于读取请求体的空间是否足够
+         */
         System.arraycopy(buff, start, dest, off, n);
         start += n;
         return n;
     }
+
 
 
     private boolean checkEof() throws IOException {
@@ -430,12 +453,14 @@ public final class ByteChunk extends AbstractChunk {
             }
             int n = in.realReadBytes(buff, 0, buff.length);
             if (n < 0) {
+                /**
+                 * n < 0,即请求体数据都应读完，其实n=-1，这里返回true，直接结束请求体读取
+                 */
                 return true;
             }
         }
         return false;
     }
-
 
     /**
      * Send the buffer to the sink. Called by append() when the limit is
